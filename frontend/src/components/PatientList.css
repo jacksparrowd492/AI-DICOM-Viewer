@@ -1,0 +1,141 @@
+.patient-list {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.patient-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.page-header h1 {
+  font-size: 32px;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.page-header p {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.search-bar {
+  position: relative;
+  max-width: 500px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px 10px 44px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.patient-name {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.contact-info {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.contact-info div {
+  margin-bottom: 2px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon {
+  padding: 6px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.btn-icon:hover {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.btn-icon-danger:hover {
+  background-color: #fee2e2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.modal h2 {
+  font-size: 24px;
+  color: #1f2937;
+  margin-bottom: 24px;
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .search-bar {
+    max-width: 100%;
+  }
+}

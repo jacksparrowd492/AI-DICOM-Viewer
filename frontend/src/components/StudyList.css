@@ -1,0 +1,62 @@
+.study-list {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.study-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.filters-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.filter-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.patient-link {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.patient-link:hover {
+  text-decoration: underline;
+}
+
+.modal-large {
+  max-width: 800px;
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+@media (max-width: 768px) {
+  .filters-bar {
+    flex-direction: column;
+  }
+
+  .filter-group {
+    width: 100%;
+  }
+}

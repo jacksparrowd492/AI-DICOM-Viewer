@@ -1,68 +1,59 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
-import { jwtDecode } from 'jwt-decode';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  // Set default axios headers
+  // Set axios defaults
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  axios.defaults.baseURL = API_URL;
+
   useEffect(() => {
+    const token = localStorage.getItem('token');
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      // Verify token and get user data
-      const decoded = jwtDecode(token);
-      const currentTime = Date.now() / 1000;
-      
-      if (decoded.exp < currentTime) {
-        logout();
-      } else {
-        fetchUserData();
-      }
+      fetchUser();
     } else {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
-  const fetchUserData = async () => {
+  const fetchUser = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/auth/me');
-      setUser(response.data.user);
+      const response = await axios.get('/auth/me');
+      if (response.data.success) {
+        setUser(response.data.user);
+      }
     } catch (error) {
-      console.error('Error fetching user data:', error);
-      logout();
+      console.error('Error fetching user:', error);
+      localStorage.removeItem('token');
+      delete axios.defaults.headers.common['Authorization'];
     } finally {
       setLoading(false);
     }
   };
 
-  const login = async (username, password) => {
+  const login = async (email, password) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        username,
-        password
-      });
-
-      const { token, user } = response.data;
-      
-      localStorage.setItem('token', token);
-      setToken(token);
-      setUser(user);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      return { success: true };
+      const response = await axios.post('/auth/login', { email, password });
+      if (response.data.success) {
+        const { token, user } = response.data;
+        localStorage.setItem('token', token);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        setUser(user);
+        return { success: true };
+      }
     } catch (error) {
       return {
         success: false,
@@ -73,16 +64,14 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', userData);
-      
-      const { token, user } = response.data;
-      
-      localStorage.setItem('token', token);
-      setToken(token);
-      setUser(user);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      return { success: true };
+      const response = await axios.post('/auth/register', userData);
+      if (response.data.success) {
+        const { token, user } = response.data;
+        localStorage.setItem('token', token);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        setUser(user);
+        return { success: true };
+      }
     } catch (error) {
       return {
         success: false,
@@ -93,19 +82,16 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
     delete axios.defaults.headers.common['Authorization'];
+    setUser(null);
   };
 
   const value = {
     user,
-    token,
     loading,
     login,
     register,
-    logout,
-    isAuthenticated: !!token && !!user
+    logout
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,64 +1,103 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { useAuth } from './context/AuthContext';
+import Login from './components/Login';
+import Register from './components/Register';
+import Dashboard from './components/Dashboard';
+import PatientList from './components/PatientList';
+import PatientDetails from './components/PatientDetails';
+import StudyList from './components/StudyList';
+import StudyDetails from './components/StudyDetails';
+import DicomViewer from './components/DicomViewer';
+import UploadDicom from './components/UploadDicom';
+import Navbar from './components/Navbar';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
-// Pages
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import Dashboard from './pages/Dashboard';
-import PacsSearch from './pages/PacsSearch';
-import StudyDetails from './pages/StudyDetails';
-import DicomViewer from './pages/DicomViewer';
-import UploadDicom from './pages/UploadDicom';
-
-// Components
-import PrivateRoute from './components/Common/PrivateRoute';
-import Navbar from './components/Common/Navbar';
-import Loading from './components/Common/Loading';
-
-import './App.css';
-
-function App() {
-  const { loading } = useAuth();
-
+const PrivateRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  
   if (loading) {
-    return <Loading />;
+    return <div className="spinner"></div>;
   }
+  
+  return user ? children : <Navigate to="/login" />;
+};
 
+const AppRoutes = () => {
   return (
-    <Router>
-      <div className="App">
-        <Navbar />
-        <ToastContainer
-          position="top-right"
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-        />
-        
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          
-          <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/search" element={<PrivateRoute><PacsSearch /></PrivateRoute>} />
-          <Route path="/upload" element={<PrivateRoute><UploadDicom /></PrivateRoute>} />
-          <Route path="/study/:studyUID" element={<PrivateRoute><StudyDetails /></PrivateRoute>} />
-          <Route path="/viewer/:seriesUID" element={<PrivateRoute><DicomViewer /></PrivateRoute>} />
-          
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
-    </Router>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route
+        path="/"
+        element={
+          <PrivateRoute>
+            <Dashboard />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/patients"
+        element={
+          <PrivateRoute>
+            <PatientList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/patients/:id"
+        element={
+          <PrivateRoute>
+            <PatientDetails />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/studies"
+        element={
+          <PrivateRoute>
+            <StudyList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/studies/:id"
+        element={
+          <PrivateRoute>
+            <StudyDetails />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/viewer/:studyId/:fileId"
+        element={
+          <PrivateRoute>
+            <DicomViewer />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/upload/:studyId"
+        element={
+          <PrivateRoute>
+            <UploadDicom />
+          </PrivateRoute>
+        }
+      />
+    </Routes>
   );
-}
+};
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <Router>
+        <div className="App">
+          <Navbar />
+          <AppRoutes />
+        </div>
+      </Router>
+    </AuthProvider>
+  );
+};
 
 export default App;

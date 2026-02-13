@@ -1,98 +1,85 @@
 const mongoose = require('mongoose');
 
 const studySchema = new mongoose.Schema({
-  studyInstanceUID: {
+  studyId: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
-  patientId: {
-    type: String,
-    required: true,
-    index: true,
-    ref: 'Patient'
+  patient: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Patient',
+    required: true
   },
   studyDate: {
-    type: String,
-    index: true
-  },
-  studyTime: String,
-  studyDescription: String,
-  studyId: String,
-  accessionNumber: {
-    type: String,
-    index: true
+    type: Date,
+    required: true
   },
   modality: {
     type: String,
-    index: true
+    required: true,
+    enum: ['CT', 'MRI', 'X-RAY', 'ULTRASOUND', 'PET', 'MAMMOGRAPHY', 'OTHER']
   },
+  bodyPart: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String,
+    required: true
+  },
+  clinicalHistory: String,
   referringPhysician: String,
   performingPhysician: String,
-  institutionName: String,
-  departmentName: String,
-  bodyPartExamined: String,
-  studyPriority: {
-    type: String,
-    enum: ['STAT', 'HIGH', 'ROUTINE', 'LOW'],
-    default: 'ROUTINE'
-  },
   status: {
     type: String,
-    enum: ['Uploaded', 'Processing', 'AI_Analyzed', 'Report_Generated', 'Completed', 'Failed'],
-    default: 'Uploaded',
-    index: true
+    enum: ['scheduled', 'in-progress', 'completed', 'reported', 'cancelled'],
+    default: 'scheduled'
   },
-  seriesCount: {
-    type: Number,
-    default: 0
+  priority: {
+    type: String,
+    enum: ['routine', 'urgent', 'stat'],
+    default: 'routine'
   },
-  instanceCount: {
-    type: Number,
-    default: 0
+  findings: String,
+  impression: String,
+  recommendations: String,
+  images: [{
+    fileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true
+    },
+    filename: String,
+    contentType: String,
+    size: Number,
+    uploadDate: Date,
+    metadata: {
+      instanceNumber: Number,
+      sliceLocation: Number,
+      imagePosition: [Number],
+      pixelSpacing: [Number],
+      windowCenter: Number,
+      windowWidth: Number,
+      tags: mongoose.Schema.Types.Mixed
+    }
+  }],
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
-  uploadedBy: {
+  reportedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  aiProcessed: {
-    type: Boolean,
-    default: false
-  },
-  aiProcessingStarted: Date,
-  aiProcessingCompleted: Date,
-  reportGenerated: {
-    type: Boolean,
-    default: false
-  },
-  reportGeneratedAt: Date,
-  reportGeneratedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  tags: [String],
-  notes: String,
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    index: true
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+  reportedAt: Date
+}, {
+  timestamps: true
 });
 
-// Update timestamp on save
-studySchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
-});
-
-// Index for efficient queries
-studySchema.index({ patientId: 1, studyDate: -1 });
-studySchema.index({ status: 1, createdAt: -1 });
-studySchema.index({ modality: 1, studyDate: -1 });
+// Index for faster queries
+studySchema.index({ patient: 1, studyDate: -1 });
+studySchema.index({ studyId: 1 });
+studySchema.index({ status: 1 });
 
 module.exports = mongoose.model('Study', studySchema);
