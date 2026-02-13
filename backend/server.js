@@ -1,86 +1,89 @@
-const express = require('express');
-const dotenv = require('dotenv');
-const cors = require('cors');
-const morgan = require('morgan');
-const helmet = require('helmet');
-const path = require('path');
-const connectDB = require('./config/database');
-const errorHandler = require('./middleware/errorHandler');
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const dotenv = require("dotenv");
 
-// Load environment variables
 dotenv.config();
 
-// Connect to MongoDB
-connectDB();
-
-// Initialize express app
 const app = express();
 
-// Security middleware
-app.use(helmet());
+/* ===============================
+   MIDDLEWARE
+================================= */
 
-// CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+app.use(cors());
+
+app.use(express.json({
+  limit: "50mb"   // good for DICOM uploads
 }));
 
-// Body parser middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({
+  extended: true,
+  limit: "50mb"
+}));
 
-// Logging middleware
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
+
+/* ===============================
+   ROUTES
+================================= */
+
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/patients", require("./routes/patients"));
+app.use("/api/studies", require("./routes/studies"));
+app.use("/api/files", require("./routes/files"));
+
+
+/* ===============================
+   ERROR HANDLER
+================================= */
+
+app.use((err, req, res, next) => {
+  console.error("SERVER ERROR:", err);
+
+  res.status(500).json({
+    success: false,
+    message: "Internal Server Error",
+    error:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : undefined
+  });
+});
+
+
+/* ===============================
+   404 ROUTE HANDLER
+================================= */
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found"
+  });
+});
+
+
+/* ===============================
+   DATABASE + SERVER START
+================================= */
+
+const PORT = process.env.PORT || 5000;
+
+async function startServer() {
+  try {
+    // 🔥 FIXED MongoDB connection (no deprecated options)
+    await mongoose.connect(process.env.MONGODB_URI);
+
+    console.log("✅ MongoDB Connected Successfully");
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+
+  } catch (error) {
+    console.error("❌ MongoDB Connection Error:", error);
+    process.exit(1);
+  }
 }
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// API Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/dicom', require('./routes/dicom'));
-app.use('/api/pacs', require('./routes/pacs'));
-app.use('/api/ai', require('./routes/ai'));
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Medical PACS System API is running',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Error handler (must be last)
-app.use(errorHandler);
-
-// Start server
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  console.log(`
-╔═══════════════════════════════════════════════════╗
-║                                                   ║
-║   🏥 MEDICAL PACS SYSTEM BACKEND                 ║
-║                                                   ║
-║   Server running on port: ${PORT}                    ║
-║   Environment: ${process.env.NODE_ENV || 'development'}                    ║
-║   MongoDB: Connected ✅                          ║
-║                                                   ║
-╚═══════════════════════════════════════════════════╝
-  `);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error(`❌ Unhandled Rejection: ${err.message}`);
-  server.close(() => process.exit(1));
-});
-
-// Handle SIGTERM
-process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
+startServer();

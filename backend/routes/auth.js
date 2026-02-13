@@ -1,31 +1,20 @@
 const express = require('express');
-const router = express.Router();
-const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
-const AuditLog = require('../models/AuditLog');
-const { protect } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 
-// Generate JWT Token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '7d'
-  });
-};
+const router = express.Router();
 
-// @route   POST /api/auth/register
-// @desc    Register new user
-// @access  Public (or Admin only in production)
+// Register
 router.post('/register', [
   body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
-  body('email').isEmail().withMessage('Please provide a valid email'),
+  body('email').isEmail().withMessage('Invalid email address'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('firstName').notEmpty().withMessage('First name is required'),
   body('lastName').notEmpty().withMessage('Last name is required'),
-  body('role').isIn(['admin', 'radiologist', 'viewer']).withMessage('Invalid role')
 ], async (req, res) => {
   try {
-    // Validate request
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ 
@@ -34,76 +23,67 @@ router.post('/register', [
       });
     }
 
-    const { username, email, password, firstName, lastName, role, phoneNumber, department, specialization, licenseNumber } = req.body;
+    const { username, email, password, firstName, lastName, role, specialization, licenseNumber } = req.body;
 
     // Check if user exists
-    let user = await User.findOne({ $or: [{ email }, { username }] });
-    if (user) {
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
       return res.status(400).json({ 
         success: false, 
-        message: 'User already exists with this email or username' 
+        message: 'User with this email or username already exists' 
       });
     }
 
     // Create user
-    user = await User.create({
+    const user = new User({
       username,
       email,
       password,
       firstName,
       lastName,
-      role,
-      phoneNumber,
-      department,
+      role: role || 'doctor',
       specialization,
       licenseNumber
     });
 
-    // Generate token
-    const token = generateToken(user._id);
+    await user.save();
 
-    // Log registration
-    await AuditLog.create({
-      userId: user._id,
-      username: user.username,
-      action: 'CREATE_USER',
-      resource: 'User',
-      resourceId: user._id.toString(),
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      status: 'SUCCESS'
-    });
+    // Generate token
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
     res.status(201).json({
       success: true,
+      message: 'User registered successfully',
       token,
       user: {
         id: user._id,
         username: user.username,
         email: user.email,
-        role: user.role,
         firstName: user.firstName,
-        lastName: user.lastName
+        lastName: user.lastName,
+        role: user.role
       }
     });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error during registration' 
+      message: 'Error registering user',
+      error: error.message 
     });
   }
 });
 
-// @route   POST /api/auth/login
-// @desc    Login user
-// @access  Public
+// Login
 router.post('/login', [
-  body('username').notEmpty().withMessage('Username is required'),
+  body('email').isEmail().withMessage('Invalid email address'),
   body('password').notEmpty().withMessage('Password is required')
 ], async (req, res) => {
   try {
-    // Validate request
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ 
@@ -112,51 +92,28 @@ router.post('/login', [
       });
     }
 
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
-    // Find user and include password
-    const user = await User.findOne({ username }).select('+password');
-    
+    // Find user
+    const user = await User.findOne({ email });
     if (!user) {
-      await AuditLog.create({
-        username: username,
-        action: 'LOGIN_FAILED',
-        resource: 'User',
-        details: { reason: 'User not found' },
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
-        status: 'FAILED'
-      });
-      
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid credentials' 
       });
     }
 
-    // Check if account is active
+    // Check if active
     if (!user.isActive) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Account is deactivated' 
+        message: 'Account is inactive' 
       });
     }
 
     // Verify password
     const isMatch = await user.comparePassword(password);
-    
     if (!isMatch) {
-      await AuditLog.create({
-        userId: user._id,
-        username: user.username,
-        action: 'LOGIN_FAILED',
-        resource: 'User',
-        details: { reason: 'Invalid password' },
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
-        status: 'FAILED'
-      });
-      
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid credentials' 
@@ -164,100 +121,60 @@ router.post('/login', [
     }
 
     // Update last login
-    user.lastLogin = Date.now();
+    user.lastLogin = new Date();
     await user.save();
 
     // Generate token
-    const token = generateToken(user._id);
-
-    // Log successful login
-    await AuditLog.create({
-      userId: user._id,
-      username: user.username,
-      action: 'LOGIN',
-      resource: 'User',
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      status: 'SUCCESS'
-    });
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
     res.json({
       success: true,
+      message: 'Login successful',
       token,
       user: {
         id: user._id,
         username: user.username,
         email: user.email,
-        role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
-        department: user.department
+        role: user.role,
+        specialization: user.specialization
       }
     });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error during login' 
+      message: 'Error logging in',
+      error: error.message 
     });
   }
 });
 
-// @route   GET /api/auth/me
-// @desc    Get current user
-// @access  Private
-router.get('/me', protect, async (req, res) => {
+// Get current user
+router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    
     res.json({
       success: true,
       user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        department: user.department,
-        specialization: user.specialization,
-        phoneNumber: user.phoneNumber
+        id: req.user._id,
+        username: req.user.username,
+        email: req.user.email,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        role: req.user.role,
+        specialization: req.user.specialization,
+        lastLogin: req.user.lastLogin
       }
     });
   } catch (error) {
-    console.error('Get user error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
-    });
-  }
-});
-
-// @route   POST /api/auth/logout
-// @desc    Logout user
-// @access  Private
-router.post('/logout', protect, async (req, res) => {
-  try {
-    // Log logout
-    await AuditLog.create({
-      userId: req.user._id,
-      username: req.user.username,
-      action: 'LOGOUT',
-      resource: 'User',
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      status: 'SUCCESS'
-    });
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error during logout' 
+      message: 'Error fetching user data' 
     });
   }
 });
