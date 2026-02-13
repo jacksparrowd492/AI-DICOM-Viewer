@@ -68,7 +68,7 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/viewer/:studyId/:fileId"
+        path="/viewer/:seriesUID"
         element={
           <PrivateRoute>
             <DicomViewer />

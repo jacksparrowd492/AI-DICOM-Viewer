@@ -1,18 +1,132 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { auditLog } = require('../middleware/auditLogger');
+const { getGridFSBucket } = require('../config/gridfs');
 const Patient = require('../models/Patient');
 const Study = require('../models/Study');
 const Series = require('../models/Series');
 const Instance = require('../models/Instance');
 const AIResult = require('../models/AIResult');
 
+// Use either 'protect' or 'auth' depending on which middleware you have
+const authMiddleware = protect || auth;
+
+// @route   GET /api/pacs/files/info/:fileId
+// @desc    Get file info from GridFS
+// @access  Private
+router.get('/files/info/:fileId',
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      
+      // Validate ObjectId
+      if (!mongoose.Types.ObjectId.isValid(fileId)) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Invalid file ID' 
+        });
+      }
+
+      const gridFSBucket = getGridFSBucket();
+      const fileObjectId = new mongoose.Types.ObjectId(fileId);
+      
+      // Find file in GridFS
+      const files = await gridFSBucket.find({ _id: fileObjectId }).toArray();
+      
+      if (!files || files.length === 0) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'File not found' 
+        });
+      }
+
+      res.json({
+        success: true,
+        file: files[0]
+      });
+    } catch (error) {
+      console.error('Error fetching file info:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Server error', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// @route   GET /api/pacs/files/stream/:fileId
+// @desc    Stream file from GridFS
+// @access  Private
+router.get('/files/stream/:fileId',
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      
+      if (!mongoose.Types.ObjectId.isValid(fileId)) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Invalid file ID' 
+        });
+      }
+
+      const gridFSBucket = getGridFSBucket();
+      const fileObjectId = new mongoose.Types.ObjectId(fileId);
+      
+      // Get file info first
+      const files = await gridFSBucket.find({ _id: fileObjectId }).toArray();
+      
+      if (!files || files.length === 0) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'File not found' 
+        });
+      }
+
+      const file = files[0];
+      
+      // Set headers
+      res.set('Content-Type', file.contentType || 'application/dicom');
+      res.set('Content-Length', file.length);
+      res.set('Cache-Control', 'public, max-age=31536000');
+      
+      // Stream file
+      const downloadStream = gridFSBucket.openDownloadStream(fileObjectId);
+      
+      downloadStream.on('error', (error) => {
+        console.error('Stream error:', error);
+        if (!res.headersSent) {
+          res.status(404).json({ 
+            success: false,
+            message: 'File not found' 
+          });
+        }
+      });
+
+      downloadStream.pipe(res);
+    } catch (error) {
+      console.error('Error streaming file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          success: false,
+          message: 'Server error', 
+          error: error.message 
+        });
+      }
+    }
+  }
+);
+
 // @route   GET /api/pacs/studies/search
 // @desc    Search studies with filters
 // @access  Private
 router.get('/studies/search',
-  protect,
+  authMiddleware,
   async (req, res) => {
     try {
       const {
@@ -114,8 +228,8 @@ router.get('/studies/search',
 // @desc    Get study details
 // @access  Private
 router.get('/studies/:studyUID',
-  protect,
-  auditLog('VIEW_STUDY', 'Study'),
+  authMiddleware,
+  auditLog && auditLog('VIEW_STUDY', 'Study'),
   async (req, res) => {
     try {
       const study = await Study.findOne({ studyInstanceUID: req.params.studyUID });
@@ -156,14 +270,36 @@ router.get('/studies/:studyUID',
 );
 
 // @route   GET /api/pacs/series/:seriesUID
-// @desc    Get series details
+// @desc    Get series details by UID
 // @access  Private
 router.get('/series/:seriesUID',
-  protect,
-  auditLog('VIEW_SERIES', 'Series'),
+  authMiddleware,
+  auditLog && auditLog('VIEW_SERIES', 'Series'),
   async (req, res) => {
     try {
-      const series = await Series.findOne({ seriesInstanceUID: req.params.seriesUID });
+      const { seriesUID } = req.params;
+      
+      // Check if it's a MongoDB ObjectId or a DICOM UID
+      let series;
+      
+      if (mongoose.Types.ObjectId.isValid(seriesUID) && seriesUID.length === 24) {
+        // It's a MongoDB ObjectId - search in Study's embedded series
+        const study = await Study.findOne({ 'series._id': seriesUID });
+        if (study) {
+          series = study.series.find(s => s._id.toString() === seriesUID);
+        }
+      } else {
+        // It's a DICOM UID - search by seriesInstanceUID
+        series = await Series.findOne({ seriesInstanceUID: seriesUID });
+        
+        // If not found in Series collection, check Study's embedded series
+        if (!series) {
+          const study = await Study.findOne({ 'series.seriesInstanceUID': seriesUID });
+          if (study) {
+            series = study.series.find(s => s.seriesInstanceUID === seriesUID);
+          }
+        }
+      }
       
       if (!series) {
         return res.status(404).json({
@@ -181,7 +317,8 @@ router.get('/series/:seriesUID',
       console.error('Get series error:', error);
       res.status(500).json({
         success: false,
-        message: 'Server error'
+        message: 'Server error',
+        error: error.message
       });
     }
   }
@@ -191,7 +328,7 @@ router.get('/series/:seriesUID',
 // @desc    Get all instances in a series
 // @access  Private
 router.get('/series/:seriesUID/instances',
-  protect,
+  authMiddleware,
   async (req, res) => {
     try {
       const instances = await Instance.find({ seriesInstanceUID: req.params.seriesUID })
@@ -225,8 +362,8 @@ router.get('/series/:seriesUID/instances',
 // @desc    Get instance details
 // @access  Private
 router.get('/instance/:instanceUID',
-  protect,
-  auditLog('VIEW_INSTANCE', 'Instance'),
+  authMiddleware,
+  auditLog && auditLog('VIEW_INSTANCE', 'Instance'),
   async (req, res) => {
     try {
       const instance = await Instance.findOne({ sopInstanceUID: req.params.instanceUID });
@@ -257,7 +394,7 @@ router.get('/instance/:instanceUID',
 // @desc    Get all patients
 // @access  Private
 router.get('/patients',
-  protect,
+  authMiddleware,
   async (req, res) => {
     try {
       const { search, limit = 50, skip = 0 } = req.query;
@@ -298,7 +435,7 @@ router.get('/patients',
 // @desc    Get dashboard statistics
 // @access  Private
 router.get('/dashboard/stats',
-  protect,
+  authMiddleware,
   async (req, res) => {
     try {
       const totalStudies = await Study.countDocuments();
